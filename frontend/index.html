@@ -1,118 +1,636 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Assignment Management System</title>
+
     <style>
-        body { font-family: Arial; max-width: 900px; margin: 40px auto; }
-        input, textarea, button { padding: 10px; margin: 6px 0; width: 100%; box-sizing: border-box; }
-        button { cursor: pointer; background: #222; color: white; }
-        .card { border: 1px solid #ddd; padding: 20px; margin: 15px 0; border-radius: 10px; }
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            color: #222;
+        }
+
+        header {
+            background: #1f2937;
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 950px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 22px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 11px;
+            margin: 7px 0;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        textarea {
+            min-height: 90px;
+            resize: vertical;
+        }
+
+        button {
+            padding: 11px 16px;
+            margin-top: 8px;
+            border: none;
+            border-radius: 6px;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .delete-btn {
+            background: #dc2626;
+            margin-left: 5px;
+        }
+
+        .delete-btn:hover {
+            background: #b91c1c;
+        }
+
+        .status {
+            font-weight: bold;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .assignment {
+            border-top: 1px solid #ddd;
+            padding-top: 18px;
+            margin-top: 18px;
+        }
+
+        .empty {
+            color: #777;
+        }
     </style>
 </head>
+
 <body>
 
-<h1>Assignment Management System</h1>
+<header>
+    <h1>Assignment Management System</h1>
+    <p>Professor Assignment Creation & Student Submission Tracking</p>
+</header>
 
-<h2>Create Assignment</h2>
+<div class="container">
 
-<input id="title" placeholder="Assignment Title">
-<input id="subject" placeholder="Subject">
-<textarea id="description" placeholder="Description"></textarea>
-<input id="deadline" type="datetime-local">
+    <!-- CREATE ASSIGNMENT -->
 
-<button onclick="createAssignment()">Create Assignment</button>
+    <div class="card">
+        <h2>Professor Dashboard</h2>
 
-<h2>Assignments</h2>
-<div id="assignments"></div>
+        <input
+            id="title"
+            type="text"
+            placeholder="Assignment Title"
+        >
+
+        <input
+            id="subject"
+            type="text"
+            placeholder="Subject"
+        >
+
+        <textarea
+            id="description"
+            placeholder="Assignment Description"
+        ></textarea>
+
+        <label><b>Deadline</b></label>
+
+        <input
+            id="deadline"
+            type="datetime-local"
+        >
+
+        <button onclick="createAssignment()">
+            Create Assignment
+        </button>
+
+        <p id="message"></p>
+    </div>
+
+
+    <!-- ASSIGNMENTS -->
+
+    <div class="card">
+        <h2>Available Assignments</h2>
+
+        <div id="assignments">
+            Loading assignments...
+        </div>
+    </div>
+
+</div>
+
 
 <script>
-const API = "http://127.0.0.1:8000";
 
-async function createAssignment() {
-    const data = {
-        title: document.getElementById("title").value,
-        subject: document.getElementById("subject").value,
-        description: document.getElementById("description").value,
-        deadline: new Date(
-            document.getElementById("deadline").value
-        ).toISOString()
-    };
+    // IMPORTANT:
+    // Replace this with your actual Render backend URL.
 
-    const response = await fetch(`${API}/assignments`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(data)
-    });
+   const API = "https://assignment-management-system-qbor.onrender.com";
 
-    if (!response.ok) {
-        alert("Invalid assignment or deadline");
-        return;
+
+    // -----------------------------
+    // CREATE ASSIGNMENT
+    // -----------------------------
+
+    async function createAssignment() {
+
+        const title =
+            document.getElementById("title").value.trim();
+
+        const subject =
+            document.getElementById("subject").value.trim();
+
+        const description =
+            document.getElementById("description").value.trim();
+
+        const deadline =
+            document.getElementById("deadline").value;
+
+
+        if (!title || !subject || !deadline) {
+
+            showMessage(
+                "Title, subject and deadline are required.",
+                true
+            );
+
+            return;
+        }
+
+
+        const deadlineDate =
+            new Date(deadline);
+
+
+        if (deadlineDate <= new Date()) {
+
+            showMessage(
+                "Deadline must be in the future.",
+                true
+            );
+
+            return;
+        }
+
+
+        try {
+
+            const response = await fetch(
+                `${API}/assignments`,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        title: title,
+
+                        subject: subject,
+
+                        description: description,
+
+                        deadline:
+                            deadlineDate.toISOString()
+                    })
+                }
+            );
+
+
+            const data = await response.json();
+
+
+            if (!response.ok) {
+
+                showMessage(
+                    data.detail || "Failed to create assignment.",
+                    true
+                );
+
+                return;
+            }
+
+
+            showMessage(
+                "Assignment created successfully!"
+            );
+
+
+            document.getElementById("title").value = "";
+            document.getElementById("subject").value = "";
+            document.getElementById("description").value = "";
+            document.getElementById("deadline").value = "";
+
+
+            loadAssignments();
+
+        }
+
+        catch (error) {
+
+            showMessage(
+                "Unable to connect to the server.",
+                true
+            );
+
+            console.error(error);
+        }
     }
 
-    alert("Assignment created!");
-    loadAssignments();
-}
 
-async function loadAssignments() {
-    const response = await fetch(`${API}/assignments`);
-    const data = await response.json();
+    // -----------------------------
+    // LOAD ASSIGNMENTS
+    // -----------------------------
 
-    document.getElementById("assignments").innerHTML =
-        data.map(a => `
-            <div class="card">
-                <h3>${a.title}</h3>
-                <p><b>Subject:</b> ${a.subject}</p>
-                <p>${a.description}</p>
-                <p><b>Deadline:</b> ${new Date(a.deadline).toLocaleString()}</p>
-                <p><b>Status:</b> ${a.status || "Pending"}</p>
+    async function loadAssignments() {
 
-                <input id="student-${a.id}" placeholder="Student ID">
-                <input id="content-${a.id}" placeholder="Submission / URL">
+        try {
 
-                <button onclick="submitAssignment(${a.id})">
-                    Submit Assignment
-                </button>
+            const response =
+                await fetch(`${API}/assignments`);
 
-                <button onclick="deleteAssignment(${a.id})">
-                    Delete
-                </button>
-            </div>
-        `).join("");
-}
+            if (!response.ok) {
 
-async function submitAssignment(id) {
-    const student = document.getElementById(`student-${id}`).value;
-    const content = document.getElementById(`content-${id}`).value;
+                throw new Error(
+                    "Failed to load assignments"
+                );
+            }
 
-    const response = await fetch(`${API}/assignments/${id}/submit`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            student_id: student,
-            content: content
-        })
-    });
 
-    const data = await response.json();
+            const assignments =
+                await response.json();
 
-    if (!response.ok) {
-        alert(data.detail);
-        return;
+
+            const container =
+                document.getElementById("assignments");
+
+
+            if (assignments.length === 0) {
+
+                container.innerHTML =
+                    '<p class="empty">No assignments created yet.</p>';
+
+                return;
+            }
+
+
+            container.innerHTML =
+                assignments.map(assignment => `
+
+                    <div class="assignment">
+
+                        <h3>
+                            ${escapeHtml(assignment.title)}
+                        </h3>
+
+                        <p>
+                            <b>Subject:</b>
+                            ${escapeHtml(assignment.subject)}
+                        </p>
+
+                        <p>
+                            <b>Description:</b>
+                            ${escapeHtml(assignment.description)}
+                        </p>
+
+                        <p>
+                            <b>Deadline:</b>
+                            ${formatDate(assignment.deadline)}
+                        </p>
+
+
+                        <hr>
+
+
+                        <h4>Student Submission</h4>
+
+
+                        <input
+                            id="student-${assignment.id}"
+                            placeholder="Student ID"
+                        >
+
+
+                        <input
+                            id="content-${assignment.id}"
+                            placeholder="Submission text or URL"
+                        >
+
+
+                        <button
+                            onclick="submitAssignment(${assignment.id})"
+                        >
+                            Submit Assignment
+                        </button>
+
+
+                        <button
+                            class="delete-btn"
+                            onclick="deleteAssignment(${assignment.id})"
+                        >
+                            Delete Assignment
+                        </button>
+
+
+                        ${
+                            assignment.submissions &&
+                            assignment.submissions.length > 0
+
+                            ?
+
+                            assignment.submissions.map(
+                                submission => `
+
+                                <div style="margin-top:15px">
+
+                                    <b>Student:</b>
+                                    ${escapeHtml(
+                                        submission.student_id
+                                    )}
+
+                                    <br>
+
+                                    <b>Status:</b>
+
+                                    <span class="status">
+                                        ${submission.status}
+                                    </span>
+
+                                    <br>
+
+                                    <b>Submitted:</b>
+                                    ${formatDate(
+                                        submission.submitted_at
+                                    )}
+
+                                </div>
+
+                                `
+                            ).join("")
+
+                            :
+
+                            `<p class="empty">
+                                No submissions yet.
+                            </p>`
+                        }
+
+                    </div>
+
+                `).join("");
+
+        }
+
+        catch (error) {
+
+            document.getElementById(
+                "assignments"
+            ).innerHTML =
+
+                `<p class="error">
+                    Unable to load assignments.
+                </p>`;
+
+            console.error(error);
+        }
     }
 
-    alert(`Submission status: ${data.status}`);
+
+    // -----------------------------
+    // SUBMIT ASSIGNMENT
+    // -----------------------------
+
+    async function submitAssignment(id) {
+
+        const studentInput =
+            document.getElementById(
+                `student-${id}`
+            );
+
+        const contentInput =
+            document.getElementById(
+                `content-${id}`
+            );
+
+
+        const studentId =
+            studentInput.value.trim();
+
+        const content =
+            contentInput.value.trim();
+
+
+        if (!studentId || !content) {
+
+            alert(
+                "Student ID and submission are required."
+            );
+
+            return;
+        }
+
+
+        try {
+
+            const response = await fetch(
+                `${API}/assignments/${id}/submit`,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        student_id: studentId,
+
+                        content: content
+                    })
+                }
+            );
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                alert(
+                    data.detail ||
+                    "Submission failed."
+                );
+
+                return;
+            }
+
+
+            alert(
+                `Submission Status: ${data.status}`
+            );
+
+
+            loadAssignments();
+
+        }
+
+        catch (error) {
+
+            alert(
+                "Unable to connect to server."
+            );
+
+            console.error(error);
+        }
+    }
+
+
+    // -----------------------------
+    // DELETE ASSIGNMENT
+    // -----------------------------
+
+    async function deleteAssignment(id) {
+
+        const confirmed =
+            confirm(
+                "Are you sure you want to delete this assignment?"
+            );
+
+
+        if (!confirmed) {
+            return;
+        }
+
+
+        try {
+
+            const response =
+                await fetch(
+                    `${API}/assignments/${id}`,
+                    {
+                        method: "DELETE"
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                alert(
+                    data.detail ||
+                    "Delete failed."
+                );
+
+                return;
+            }
+
+
+            alert(
+                "Assignment deleted."
+            );
+
+
+            loadAssignments();
+
+        }
+
+        catch (error) {
+
+            alert(
+                "Unable to connect to server."
+            );
+        }
+    }
+
+
+    // -----------------------------
+    // HELPERS
+    // -----------------------------
+
+    function formatDate(date) {
+
+        return new Date(date)
+            .toLocaleString();
+    }
+
+
+    function showMessage(message, error = false) {
+
+        const element =
+            document.getElementById("message");
+
+        element.textContent = message;
+
+        element.className =
+            error ? "error" : "success";
+    }
+
+
+    function escapeHtml(value) {
+
+        return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+
+    // Load assignments when page opens.
+
     loadAssignments();
-}
 
-async function deleteAssignment(id) {
-    await fetch(`${API}/assignments/${id}`, {
-        method: "DELETE"
-    });
-
-    loadAssignments();
-}
-
-loadAssignments();
 </script>
 
 </body>
