@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Assignment Management System</title>
+    <style>
+        body { font-family: Arial; max-width: 900px; margin: 40px auto; }
+        input, textarea, button { padding: 10px; margin: 6px 0; width: 100%; box-sizing: border-box; }
+        button { cursor: pointer; background: #222; color: white; }
+        .card { border: 1px solid #ddd; padding: 20px; margin: 15px 0; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+<h1>Assignment Management System</h1>
+
+<h2>Create Assignment</h2>
+
+<input id="title" placeholder="Assignment Title">
+<input id="subject" placeholder="Subject">
+<textarea id="description" placeholder="Description"></textarea>
+<input id="deadline" type="datetime-local">
+
+<button onclick="createAssignment()">Create Assignment</button>
+
+<h2>Assignments</h2>
+<div id="assignments"></div>
+
+<script>
+const API = "http://127.0.0.1:8000";
+
+async function createAssignment() {
+    const data = {
+        title: document.getElementById("title").value,
+        subject: document.getElementById("subject").value,
+        description: document.getElementById("description").value,
+        deadline: new Date(
+            document.getElementById("deadline").value
+        ).toISOString()
+    };
+
+    const response = await fetch(`${API}/assignments`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+        alert("Invalid assignment or deadline");
+        return;
+    }
+
+    alert("Assignment created!");
+    loadAssignments();
+}
+
+async function loadAssignments() {
+    const response = await fetch(`${API}/assignments`);
+    const data = await response.json();
+
+    document.getElementById("assignments").innerHTML =
+        data.map(a => `
+            <div class="card">
+                <h3>${a.title}</h3>
+                <p><b>Subject:</b> ${a.subject}</p>
+                <p>${a.description}</p>
+                <p><b>Deadline:</b> ${new Date(a.deadline).toLocaleString()}</p>
+                <p><b>Status:</b> ${a.status || "Pending"}</p>
+
+                <input id="student-${a.id}" placeholder="Student ID">
+                <input id="content-${a.id}" placeholder="Submission / URL">
+
+                <button onclick="submitAssignment(${a.id})">
+                    Submit Assignment
+                </button>
+
+                <button onclick="deleteAssignment(${a.id})">
+                    Delete
+                </button>
+            </div>
+        `).join("");
+}
+
+async function submitAssignment(id) {
+    const student = document.getElementById(`student-${id}`).value;
+    const content = document.getElementById(`content-${id}`).value;
+
+    const response = await fetch(`${API}/assignments/${id}/submit`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            student_id: student,
+            content: content
+        })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        alert(data.detail);
+        return;
+    }
+
+    alert(`Submission status: ${data.status}`);
+    loadAssignments();
+}
+
+async function deleteAssignment(id) {
+    await fetch(`${API}/assignments/${id}`, {
+        method: "DELETE"
+    });
+
+    loadAssignments();
+}
+
+loadAssignments();
+</script>
+
+</body>
+</html>
