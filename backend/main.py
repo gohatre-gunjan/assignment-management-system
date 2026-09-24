@@ -1,13 +1,37 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timezone
 
 app = FastAPI(title="Assignment Management System")
 
+
+# =========================
+# CORS
+# =========================
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# =========================
+# In-memory storage
+# =========================
+
 assignments = []
 submissions = []
 next_assignment_id = 1
+next_submission_id = 1
 
+
+# =========================
+# Models
+# =========================
 
 class AssignmentCreate(BaseModel):
     title: str
@@ -21,25 +45,71 @@ class SubmissionCreate(BaseModel):
     content: str
 
 
+# =========================
+# Utility
+# =========================
+
+def normalize_datetime(value):
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
 def calculate_status(deadline, submitted_at=None):
+    deadline = normalize_datetime(deadline)
     now = datetime.now(timezone.utc)
 
-    if submitted_at:
-        return "On Time" if submitted_at <= deadline else "Late"
+    # Student has submitted
+    if submitted_at is not None:
+        submitted_at = normalize_datetime(submitted_at)
 
-    return "Missing" if now > deadline else "Pending"
+        if submitted_at <= deadline:
+            return "On Time"
+        else:
+            return "Late"
 
+    # Student has not submitted
+    if now > deadline:
+        return "Missing"
+
+    return "Pending"
+
+
+# =========================
+# Root
+# =========================
 
 @app.get("/")
 def home():
-    return {"message": "Assignment Management System API is running"}
+    return {
+        "message": "Assignment Management System API is running"
+    }
 
+
+# =========================
+# Assignment CRUD
+# =========================
 
 @app.post("/assignments")
 def create_assignment(data: AssignmentCreate):
     global next_assignment_id
 
-    if data.deadline <= datetime.now(timezone.utc):
+    if not data.title.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Title is required"
+        )
+
+    if not data.subject.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Subject is required"
+        )
+
+    deadline = normalize_datetime(data.deadline)
+
+    # Deadline must be in future
+    if deadline <= datetime.now(timezone.utc):
         raise HTTPException(
             status_code=400,
             detail="Deadline must be in the future"
@@ -47,10 +117,10 @@ def create_assignment(data: AssignmentCreate):
 
     assignment = {
         "id": next_assignment_id,
-        "title": data.title,
-        "subject": data.subject,
-        "description": data.description,
-        "deadline": data.deadline
+        "title": data.title.strip(),
+        "subject": data.subject.strip(),
+        "description": data.description.strip(),
+        "deadline": deadline
     }
 
     assignments.append(assignment)
@@ -64,80 +134,176 @@ def get_assignments():
     result = []
 
     for assignment in assignments:
-        item = assignment.copy()
 
-        related = [
-            s for s in submissions
-            if s["assignment_id"] == assignment["id"]
+        assignment_copy = assignment.copy()
+
+        related_submissions = [
+            submission
+            for submission in submissions
+            if submission["assignment_id"] == assignment["id"]
         ]
 
-        item["submissions"] = [
-            {
-                **s,
-                "status": calculate_status(
-                    assignment["deadline"],
-                    s["submitted_at"]
-                )
-            }
-            for s in related
-        ]
+        assignment_copy["submissions"] = []
 
-        if not related:
-            item["status"] = calculate_status(assignment["deadline"])
+        for submission in related_submissions:
+            submission_copy = submission.copy()
 
-        result.append(item)
+            submission_copy["status"] = calculate_status(
+                assignment["deadline"],
+                submission["submitted_at"]
+            )
+
+            assignment_copy["submissions"].append(
+                submission_copy
+            )
+
+        # If nobody submitted
+        if not related_submissions:
+            assignment_copy["status"] = calculate_status(
+                assignment["deadline"]
+            )
+
+        result.append(assignment_copy)
 
     return result
 
 
 @app.get("/assignments/{assignment_id}")
 def get_assignment(assignment_id: int):
+
     for assignment in assignments:
         if assignment["id"] == assignment_id:
             return assignment
 
-    raise HTTPException(status_code=404, detail="Assignment not found")
+    raise HTTPException(
+        status_code=404,
+        detail="Assignment not found"
+    )
 
 
 @app.put("/assignments/{assignment_id}")
-def update_assignment(assignment_id: int, data: AssignmentCreate):
+def update_assignment(
+    assignment_id: int,
+    data: AssignmentCreate
+):
+
+    if not data.title.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Title is required"
+        )
+
+    if not data.subject.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Subject is required"
+        )
+
+    deadline = normalize_datetime(data.deadline)
+
+    if deadline <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=400,
+            detail="Deadline must be in the future"
+        )
+
     for assignment in assignments:
+
         if assignment["id"] == assignment_id:
-            assignment.update(data.model_dump())
+
+            assignment["title"] = data.title.strip()
+            assignment["subject"] = data.subject.strip()
+            assignment["description"] = data.description.strip()
+            assignment["deadline"] = deadline
+
             return assignment
 
-    raise HTTPException(status_code=404, detail="Assignment not found")
+    raise HTTPException(
+        status_code=404,
+        detail="Assignment not found"
+    )
 
 
 @app.delete("/assignments/{assignment_id}")
 def delete_assignment(assignment_id: int):
+
     global assignments
+    global submissions
 
-    for assignment in assignments:
-        if assignment["id"] == assignment_id:
-            assignments = [
-                a for a in assignments if a["id"] != assignment_id
-            ]
-            return {"message": "Assignment deleted"}
+    exists = any(
+        assignment["id"] == assignment_id
+        for assignment in assignments
+    )
 
-    raise HTTPException(status_code=404, detail="Assignment not found")
+    if not exists:
+        raise HTTPException(
+            status_code=404,
+            detail="Assignment not found"
+        )
 
+    assignments = [
+        assignment
+        for assignment in assignments
+        if assignment["id"] != assignment_id
+    ]
+
+    submissions = [
+        submission
+        for submission in submissions
+        if submission["assignment_id"] != assignment_id
+    ]
+
+    return {
+        "message": "Assignment deleted successfully"
+    }
+
+
+# =========================
+# Student Submission
+# =========================
 
 @app.post("/assignments/{assignment_id}/submit")
-def submit_assignment(assignment_id: int, data: SubmissionCreate):
+def submit_assignment(
+    assignment_id: int,
+    data: SubmissionCreate
+):
+
+    global next_submission_id
+
     assignment = next(
-        (a for a in assignments if a["id"] == assignment_id),
+        (
+            assignment
+            for assignment in assignments
+            if assignment["id"] == assignment_id
+        ),
         None
     )
 
-    if not assignment:
-        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Assignment not found"
+        )
 
+    if not data.student_id.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Student ID is required"
+        )
+
+    if not data.content.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Submission content is required"
+        )
+
+    # Duplicate submission check
     duplicate = next(
         (
-            s for s in submissions
-            if s["assignment_id"] == assignment_id
-            and s["student_id"] == data.student_id
+            submission
+            for submission in submissions
+            if submission["assignment_id"] == assignment_id
+            and submission["student_id"] == data.student_id.strip()
         ),
         None
     )
@@ -148,20 +314,45 @@ def submit_assignment(assignment_id: int, data: SubmissionCreate):
             detail="Duplicate submission not allowed"
         )
 
+    # SERVER timestamp
     submitted_at = datetime.now(timezone.utc)
 
+    status = calculate_status(
+        assignment["deadline"],
+        submitted_at
+    )
+
     submission = {
-        "id": len(submissions) + 1,
+        "id": next_submission_id,
         "assignment_id": assignment_id,
-        "student_id": data.student_id,
-        "content": data.content,
+        "student_id": data.student_id.strip(),
+        "content": data.content.strip(),
         "submitted_at": submitted_at,
-        "status": calculate_status(
-            assignment["deadline"],
-            submitted_at
-        )
+        "status": status
     }
 
     submissions.append(submission)
+    next_submission_id += 1
 
     return submission
+
+
+@app.get("/assignments/{assignment_id}/submissions")
+def get_submissions(assignment_id: int):
+
+    exists = any(
+        assignment["id"] == assignment_id
+        for assignment in assignments
+    )
+
+    if not exists:
+        raise HTTPException(
+            status_code=404,
+            detail="Assignment not found"
+        )
+
+    return [
+        submission
+        for submission in submissions
+        if submission["assignment_id"] == assignment_id
+    ]
